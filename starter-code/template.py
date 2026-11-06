@@ -67,7 +67,32 @@ def call_openai(
     """
     # TODO: Import OpenAI, instantiate client, call chat.completions.create with parameters,
     #       measure execution start/end time, extract text and token usage, and return them.
-    raise NotImplementedError("Implement call_openai")
+    # raise NotImplementedError("Implement call_openai")
+    from openai import OpenAI
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    # Start measuring time
+    start_time = time.time()
+    
+    # Call OpenAI Chat Completions API
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens
+    )
+    
+    # Calculate latency
+    latency_seconds = time.time() - start_time
+    
+    # Extract content and token usage
+    response_text = response.choices[0].message.content
+    usage = {
+        "input_tokens": response.usage.prompt_tokens,
+        "output_tokens": response.usage.completion_tokens
+    }
+    
+    return response_text, latency_seconds, usage    
 
 
 # ---------------------------------------------------------------------------
@@ -115,8 +140,41 @@ def call_gemini(
     """
     # TODO: Initialize Gemini client, set config parameters, call generate_content,
     #       measure latency, extract response text and usage metadata, and return the tuple.
-    raise NotImplementedError("Implement call_gemini")
-
+    # raise NotImplementedError("Implement call_gemini")
+    from google import genai
+    from google.genai import types
+    
+    # Create Google GenAI client
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    
+    # Configure generation parameters
+    config = types.GenerateContentConfig(
+        temperature=temperature,
+        top_p=top_p,
+        max_output_tokens=max_tokens
+    )
+    
+    # Start measuring time
+    start_time = time.time()
+    
+    # Call Google Gemini API
+    response = client.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=config
+    )
+    
+    # Calculate latency
+    latency_seconds = time.time() - start_time
+    
+    # Extract content and token usage from usage_metadata
+    response_text = response.text
+    usage = {
+        "input_tokens": response.usage_metadata.prompt_token_count,
+        "output_tokens": response.usage_metadata.candidates_token_count
+    }
+    
+    return response_text, latency_seconds, usage
 
 # ---------------------------------------------------------------------------
 # Task 3 — Call Anthropic Claude (Exploratory track)
@@ -152,9 +210,33 @@ def call_anthropic(
     """
     # TODO: Initialize Anthropic client, create message, measure latency,
     #       extract content text and usage statistics, and return the tuple.
-    raise NotImplementedError("Implement call_anthropic")
+    # raise NotImplementedError("Implement call_anthropic")
 
-
+    import anthropic
+    client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+    # Start measuring time
+    start_time = time.time()
+    
+    # Call Anthropic Messages API
+    response = client.messages.create(
+        model=model,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+        top_p=top_p,
+        max_tokens=max_tokens
+    )
+    
+    # Calculate latency
+    latency_seconds = time.time() - start_time
+    
+    # Extract content and token usage
+    response_text = response.content[0].text
+    usage = {
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens
+    }
+    
+    return response_text, latency_seconds, usage
 # ---------------------------------------------------------------------------
 # Task 4 — Compare Models (OpenAI GPT-4o vs OpenAI Mini vs Gemini 2.5 Flash)
 # ---------------------------------------------------------------------------
@@ -180,8 +262,63 @@ def compare_models(prompt: str) -> dict:
     # TODO: Calculate costs exactly based on input and output token counts using PRICING_1M_TOKENS
     #       Formula: Cost = (input_tokens * input_rate_per_1M + output_tokens * output_rate_per_1M) / 1,000,000
     # TODO: Assemble and return the comparison dictionary.
-    raise NotImplementedError("Implement compare_models")
+    # raise NotImplementedError("Implement compare_models")
 
+    # 1. Call 3 models respectively
+    gpt4o_text, gpt4o_latency, gpt4o_usage = call_openai(prompt, model=OPENAI_MODEL)
+    gpt4o_mini_text, gpt4o_mini_latency, gpt4o_mini_usage = call_openai(prompt, model=OPENAI_MINI_MODEL)
+    gemini_text, gemini_latency, gemini_usage = call_gemini(prompt, model=GEMINI_MODEL)
+    
+    # 2. Calculate costs exactly based on input and output token counts using PRICING_1M_TOKENS
+    # Formula: Cost = (input_tokens * input_rate_per_1M + output_tokens * output_rate_per_1M) / 1,000,000
+    
+    # GPT-4o cost
+    gpt4o_rates = PRICING_1M_TOKENS[OPENAI_MODEL]
+    gpt4o_cost = (
+        gpt4o_usage["input_tokens"] * gpt4o_rates["input"] + 
+        gpt4o_usage["output_tokens"] * gpt4o_rates["output"]
+    ) / 1_000_000
+    
+    # GPT-4o-mini cost
+    gpt4o_mini_rates = PRICING_1M_TOKENS[OPENAI_MINI_MODEL]
+    gpt4o_mini_cost = (
+        gpt4o_mini_usage["input_tokens"] * gpt4o_mini_rates["input"] + 
+        gpt4o_mini_usage["output_tokens"] * gpt4o_mini_rates["output"]
+    ) / 1_000_000
+    
+    # Gemini 2.5 Flash cost
+    gemini_rates = PRICING_1M_TOKENS[GEMINI_MODEL]
+    gemini_cost = (
+        gemini_usage["input_tokens"] * gemini_rates["input"] + 
+        gemini_usage["output_tokens"] * gemini_rates["output"]
+    ) / 1_000_000
+    
+    # 3. Assemble and return the comparison dictionary.
+    result = {
+        "gpt4o": {
+            "response": gpt4o_text,
+            "latency": gpt4o_latency,
+            "cost": gpt4o_cost,
+            "input_tokens": gpt4o_usage["input_tokens"],
+            "output_tokens": gpt4o_usage["output_tokens"]
+        },
+        "gpt4o_mini": {
+            "response": gpt4o_mini_text,
+            "latency": gpt4o_mini_latency,
+            "cost": gpt4o_mini_cost,
+            "input_tokens": gpt4o_mini_usage["input_tokens"],
+            "output_tokens": gpt4o_mini_usage["output_tokens"]
+        },
+        "gemini_flash": {
+            "response": gemini_text,
+            "latency": gemini_latency,
+            "cost": gemini_cost,
+            "input_tokens": gemini_usage["input_tokens"],
+            "output_tokens": gemini_usage["output_tokens"]
+        }
+    }
+    
+    return result
 
 # ---------------------------------------------------------------------------
 # Task 5 — Streaming chatbot with Gemini 2.5 (Focus Model)
@@ -201,8 +338,59 @@ def streaming_chatbot() -> None:
         - Keep history limited to the last 3 turns to optimize context window and costs.
     """
     # TODO: Setup interactive session, prompt user for input, stream response, and update history.
-    raise NotImplementedError("Implement streaming_chatbot")
-
+    # raise NotImplementedError("Implement streaming_chatbot")
+    from google import genai
+    
+    # 1. Create client and list to store conversation history
+    client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+    history = []
+    
+    print(f"Gemini 2.5 Chatbot initialized. Model: {GEMINI_MODEL}")
+    print("Type 'quit' or 'exit' to end the session.\n")
+    
+    while True:
+        try:
+            user_input = input("\nYou: ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting chatbot. Goodbye!")
+            break
+            
+        # Check exit conditions
+        if user_input.lower() in ["quit", "exit"]:
+            print("Goodbye!")
+            break
+            
+        if not user_input:
+            continue
+            
+        # Add user message to history
+        history.append({"role": "user", "parts": [user_input]})
+        
+        # Limit history to the last 3 turns (6 messages) for optimal context and cost
+        active_history = history[-6:]
+        
+        print("Gemini: ", end="", flush=True)
+        
+        try:
+            # 2. Call streaming content from Gemini 2.5
+            response_stream = client.models.generate_content_stream(
+                model=GEMINI_MODEL,
+                contents=active_history
+            )
+            
+            full_response_text = ""
+            # 3. Iterate through each chunk and print to the screen in real-time[cite: 1]
+            for chunk in response_stream:
+                if chunk.text:
+                    print(chunk.text, end="", flush=True)
+                    full_response_text += chunk.text
+            print() 
+            
+            # Add the model's response to history
+            history.append({"role": "model", "parts": [full_response_text]})
+            
+        except Exception as e:
+            print(f"\n[Error occurred: {e}]")
 
 # ---------------------------------------------------------------------------
 # Bonus Task A — Retry with exponential backoff
